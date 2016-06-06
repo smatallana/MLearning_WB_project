@@ -2,7 +2,7 @@
 Machine Learning for Public Policy (UChicago) - final project
 
 ## Steps
-1) Use python feature_generation.py to add additional features to the data. Change "data/tothecheck.csv" and "data/tothecheck_II.csv" as 
+1) Use python feature_generation.py to add additional features to the data. Change "data/tothepipe.csv" and "data/tothepipe_II.csv" as 
 input and output files.
 
 2) Run code from the WB_delivery.ipynb notebook.
