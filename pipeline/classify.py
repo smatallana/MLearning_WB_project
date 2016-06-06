@@ -13,6 +13,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, BaggingClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.grid_search import ParameterGrid
+from sklearn.svm import LinearSVC
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, precision_recall_curve
 import time
 
@@ -38,7 +39,7 @@ grid = {#'LR': {'penalty': ['l1', 'l2'], 'C': [0.1, 1]},
         }
 
 
-def classify(X, y, models, iters, threshold, metrics):
+def classify(X, y, models, iters, threshold, metrics, top_perc):
 	'''
 	Takes:
 		X, a dataframe of features 
@@ -66,6 +67,7 @@ def classify(X, y, models, iters, threshold, metrics):
 			f1_per_iter = []
 			roc_auc_per_iter = []
 			time_per_iter = []
+			precision_top_n_p_iter = []
 			avg_metrics = {}
 			all_models[name][str(p)] = {}
 			results = all_models[name][str(p)]
@@ -76,32 +78,34 @@ def classify(X, y, models, iters, threshold, metrics):
 
 				# Construct train and test splits
 				xtrain, xtest, ytrain, ytest = \
-					train_test_split(X, y, test_size=0.2, random_state=0)
-
+					train_test_split(X, y, test_size=0.2)
+				
 				try:
 					start_time = time.time()
-					
 					# get the predicted results from the model
 					if hasattr(clf, 'predict_proba'):
-						yscores = clf.fit(xtrain, ytrain).predict_proba(xtest)[:,1]
+						yscores = clf.fit(xtrain,ytrain).predict_proba(xtest)[:,1]
 					else:
-						yscores = clf.fit(xtrain, ytrain).decision_function(xtest)
+						yscores = clf.fit(xtrain,ytrain).decision_function(xtest)
 					
 					xtest_temp = xtest.copy()
 					xtest_temp['yscore'] = yscores
 					xtest_temp['expected_value'] = xtest_temp.apply(lambda row: \
 						row['yscore'] * row[OBJ_COL], axis=1)
+					xtest_temp['y'] = ytest
 					xtest_temp = xtest_temp.sort_values(by='expected_value', ascending=False)
 
-					perc = 0.1 #change to define number of contracts to investigate
-					n = round(ytest.size * perc)
+					# To define number of contracts to investigate
+					n = round(ytest.size * top_perc)
 
 					yhat = np.asarray([1 if i >= threshold else 0 for i in xtest_temp['yscore']])
 					end_time = time.time()
 
 					# obtain metrics
-					precision_top_n_p_iter = []
-					precision_top_n_p_iter.append(precision_score(ytest[:n], yhat[:n]))
+					precision_top_n_p_iter.append(precision_score(xtest_temp['y'][:n], yhat[:n]))
+					print(yhat[:n])
+					print(xtest_temp['y'][:n])
+					print(precision_score(xtest_temp['y'][:n], yhat[:n]))
 
 					mtrs = evaluate_classifier(ytest, yhat)
 					for met, value in mtrs.items():
@@ -142,6 +146,7 @@ def select_best_models(results, models, d_metric):
 	columns = ['roc_auc', 'f1', 'precision', 'recall', 'time', 'parameters', 'precision_top_n']
 	rv = pd.DataFrame(index = models, columns = columns)
 	best_metric = 0
+	best_model = 0
 	best_models = {}
 
 	for model, iters in results.items():
@@ -155,8 +160,12 @@ def select_best_models(results, models, d_metric):
 				best_models[model]['parameters'] = params
 				best_models[model]['metrics'] = metrics
 
-		to_append = [value for value in best_models[model]['metrics'].values()]
-		to_append.append(best_models[model]['parameters'])
+		try:
+			to_append = [value for value in best_models[model]['metrics'].values()]
+			to_append.append(best_models[model]['parameters'])
+		except:
+			to_append = [0]
+		
 		rv.loc[model] = to_append
 		if top_intra_metric > best_metric:
 			best_metric = top_intra_metric
